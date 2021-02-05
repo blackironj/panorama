@@ -108,7 +108,7 @@ fabric.properties
 .vscode/*
 
 ### exe ###
-cmd/panorama
-cmd/panorama.exe
+panorama
+panorama.exe
 
 # End of https://www.toptal.com/developers/gitignore/api/jetbrains,vscode
