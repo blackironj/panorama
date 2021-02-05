@@ -26,5 +26,4 @@ jobs:
          ${{ runner.os }}-go-
     - name: Build
       run:  |
-        cd cmd
         go build -v .
