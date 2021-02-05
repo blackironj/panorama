@@ -3,7 +3,9 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"time"
 
+	"github.com/briandowns/spinner"
 	"github.com/spf13/cobra"
 
 	"github.com/blackironj/panorama/conv"
@@ -24,13 +26,21 @@ var (
 				er("Need a image for converting")
 			}
 
+			fmt.Println("Read a image...")
 			inImage, ext, err := conv.ReadImage(inFilePath)
 			if err != nil {
 				er(err)
 			}
 
-			canvases := conv.ConverEquirectangularToCubemap(edgeLen, inImage)
+			s := spinner.New(spinner.CharSets[33], 100*time.Millisecond)
+			s.FinalMSG = "Complete converting!\n"
+			s.Prefix = "Converting..."
 
+			s.Start()
+			canvases := conv.ConverEquirectangularToCubemap(edgeLen, inImage)
+			s.Stop()
+
+			fmt.Println("Write images...")
 			if err := conv.WriteImage(canvases, outFileDir, ext); err != nil {
 				er(err)
 			}
