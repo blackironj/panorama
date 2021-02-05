@@ -1,12 +1,10 @@
 package main
 
 import (
-	"fmt"
 	"image"
 	"image/jpeg"
 	"os"
 	"strconv"
-	"time"
 
 	"github.com/blackironj/panorama/img"
 )
@@ -21,18 +19,8 @@ func main() {
 	defer imgFile.Close()
 	imgIn, _, _ := image.Decode(imgFile)
 
-	var totalTime time.Duration
-	fmt.Println("[GO] Panoramal to cube map")
-
 	canvases := make([]*image.RGBA, 6)
-	for i := 0; i < testLoop; i++ {
-		start := time.Now()
-		canvases = img.ConverBack(rValue, imgIn)
-
-		fmt.Printf("[GO] elapsed time : %v\n", time.Since(start))
-		totalTime += time.Since(start)
-	}
-	fmt.Printf("[GO] average time : %v\n", totalTime/testLoop)
+	canvases = img.ConverBack(rValue, imgIn)
 
 	opt := jpeg.Options{
 		Quality: 90,
