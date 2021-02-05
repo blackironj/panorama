@@ -1,19 +1,14 @@
-package img
+package conv
 
 import (
-	"fmt"
 	"image"
 	"image/color"
+	"log"
 	"math"
 	"sync"
 )
 
 const Pi_2 = math.Pi / 2.0
-
-type PixelRange struct {
-	Start int
-	End   int
-}
 
 type Vec3fa struct {
 	X, Y, Z float64
@@ -42,7 +37,7 @@ func outImgToXYZ(i, j, face, edge int, inLen float64) *Vec3fa {
 	case 5:
 		res = Vec3fa{-b, a, -1.0}
 	default:
-		fmt.Printf("face %d\n", face)
+		log.Fatal("Wrong face")
 	}
 	return &res
 }
@@ -88,7 +83,7 @@ func interpolateXYZtoColor(xyz *Vec3fa, imgIn image.Image, sw, sh int) *Vec3uc {
 	}
 }
 
-func ConverBack(rValue int, imgIn image.Image) []*image.RGBA {
+func ConverPanoramaToCubemap(rValue int, imgIn image.Image) []*image.RGBA {
 	sw := imgIn.Bounds().Max.X
 	sh := imgIn.Bounds().Max.Y
 

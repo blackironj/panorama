@@ -6,7 +6,7 @@ import (
 	"os"
 	"strconv"
 
-	"github.com/blackironj/panorama/img"
+	"github.com/blackironj/panorama/conv"
 )
 
 const (
@@ -20,7 +20,7 @@ func main() {
 	imgIn, _, _ := image.Decode(imgFile)
 
 	canvases := make([]*image.RGBA, 6)
-	canvases = img.ConverBack(rValue, imgIn)
+	canvases = conv.ConverPanoramaToCubemap(rValue, imgIn)
 
 	opt := jpeg.Options{
 		Quality: 90,
