@@ -24,17 +24,17 @@ func outImgToXYZ(i, j, face, edge int, inLen float64) *Vec3fa {
 
 	var res Vec3fa
 	switch face {
-	case 0:
+	case 0: //back
 		res = Vec3fa{-1.0, -a, -b}
-	case 1:
+	case 1: //left
 		res = Vec3fa{a, -1.0, -b}
-	case 2:
+	case 2: //front
 		res = Vec3fa{1.0, a, -b}
-	case 3:
+	case 3: //right
 		res = Vec3fa{-a, 1.0, -b}
-	case 4:
+	case 4: //top
 		res = Vec3fa{b, a, 1.0}
-	case 5:
+	case 5: //bottom
 		res = Vec3fa{-b, a, -1.0}
 	default:
 		log.Fatal("Wrong face")
@@ -83,7 +83,7 @@ func interpolateXYZtoColor(xyz *Vec3fa, imgIn image.Image, sw, sh int) *Vec3uc {
 	}
 }
 
-func ConverPanoramaToCubemap(rValue int, imgIn image.Image) []*image.RGBA {
+func ConverEquirectangularToCubemap(rValue int, imgIn image.Image) []*image.RGBA {
 	sw := imgIn.Bounds().Max.X
 	sh := imgIn.Bounds().Max.Y
 
