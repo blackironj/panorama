@@ -37,7 +37,7 @@ var (
 			s.Prefix = "Converting..."
 
 			s.Start()
-			canvases := conv.ConverEquirectangularToCubemap(edgeLen, inImage)
+			canvases := conv.ConvertEquirectangularToCubeMap(edgeLen, inImage)
 			s.Stop()
 
 			fmt.Println("Write images...")

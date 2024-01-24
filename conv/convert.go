@@ -83,27 +83,30 @@ func interpolateXYZtoColor(xyz *Vec3fa, imgIn image.Image, sw, sh int) *Vec3uc {
 	}
 }
 
-func ConverEquirectangularToCubemap(rValue int, imgIn image.Image) []*image.RGBA {
+func ConvertEquirectangularToCubeMap(rValue int, imgIn image.Image) []*image.RGBA {
 	sw := imgIn.Bounds().Max.X
 	sh := imgIn.Bounds().Max.Y
 
-	wg := sync.WaitGroup{}
-	wg.Add(6)
+	var wg sync.WaitGroup
 
 	canvases := make([]*image.RGBA, 6)
-
 	for i := 0; i < 6; i++ {
+		wg.Add(1)
 		canvases[i] = image.NewRGBA(image.Rect(0, 0, rValue, rValue))
 		start := i * rValue
 		end := start + rValue
-		go convert(start, end, rValue, sw, sh, imgIn, canvases, &wg)
+
+		go func() {
+			defer wg.Done()
+			convert(start, end, rValue, sw, sh, imgIn, canvases)
+		}()
 	}
 	wg.Wait()
 
 	return canvases
 }
 
-func convert(start, end, edge, sw, sh int, imgIn image.Image, imgOut []*image.RGBA, wg *sync.WaitGroup) {
+func convert(start, end, edge, sw, sh int, imgIn image.Image, imgOut []*image.RGBA) {
 	inLen := 2.0 / float64(edge)
 
 	for k := start; k < end; k++ {
@@ -117,7 +120,6 @@ func convert(start, end, edge, sw, sh int, imgIn image.Image, imgOut []*image.RG
 			imgOut[face].Set(i, j, color.RGBA{uint8(clr.X), uint8(clr.Y), uint8(clr.Z), 255})
 		}
 	}
-	wg.Done()
 }
 
 func safeIndex(n, size float64) int {
