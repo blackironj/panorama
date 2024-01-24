@@ -10,39 +10,38 @@ import (
 
 const Pi_2 = math.Pi / 2.0
 
-type Vec3fa struct {
-	X, Y, Z float64
+type Number interface {
+	uint32 | float64
+}
+type Vec3[T Number] struct {
+	X, Y, Z T
 }
 
-type Vec3uc struct {
-	X, Y, Z uint32
-}
-
-func outImgToXYZ(i, j, face, edge int, inLen float64) *Vec3fa {
+func outImgToXYZ(i, j, face, edge int, inLen float64) Vec3[float64] {
 	a := inLen*float64(i) - 1.0
 	b := inLen*float64(j) - 1.0
 
-	var res Vec3fa
+	var res Vec3[float64]
 	switch face {
 	case 0: //back
-		res = Vec3fa{-1.0, -a, -b}
+		res = Vec3[float64]{-1.0, -a, -b}
 	case 1: //left
-		res = Vec3fa{a, -1.0, -b}
+		res = Vec3[float64]{a, -1.0, -b}
 	case 2: //front
-		res = Vec3fa{1.0, a, -b}
+		res = Vec3[float64]{1.0, a, -b}
 	case 3: //right
-		res = Vec3fa{-a, 1.0, -b}
+		res = Vec3[float64]{-a, 1.0, -b}
 	case 4: //top
-		res = Vec3fa{b, a, 1.0}
+		res = Vec3[float64]{b, a, 1.0}
 	case 5: //bottom
-		res = Vec3fa{-b, a, -1.0}
+		res = Vec3[float64]{-b, a, -1.0}
 	default:
 		log.Fatal("Wrong face")
 	}
-	return &res
+	return res
 }
 
-func interpolateXYZtoColor(xyz *Vec3fa, imgIn image.Image, sw, sh int) *Vec3uc {
+func interpolateXYZtoColor(xyz Vec3[float64], imgIn image.Image, sw, sh int) Vec3[uint32] {
 	theta := math.Atan2(xyz.Y, xyz.X)
 	rad := math.Hypot(xyz.X, xyz.Y) // range -pi to pi
 	phi := math.Atan2(xyz.Z, rad)   // range -pi/2 to pi/2
@@ -61,9 +60,9 @@ func interpolateXYZtoColor(xyz *Vec3fa, imgIn image.Image, sw, sh int) *Vec3uc {
 	mu := uf - float64(ui)
 	nu := vf - float64(vi)
 
-	read := func(x, y int) *Vec3fa {
+	read := func(x, y int) Vec3[float64] {
 		red, green, blue, _ := imgIn.At(x, y).RGBA()
-		return &Vec3fa{
+		return Vec3[float64]{
 			X: float64(red >> 8),
 			Y: float64(green >> 8),
 			Z: float64(blue >> 8),
@@ -76,7 +75,7 @@ func interpolateXYZtoColor(xyz *Vec3fa, imgIn image.Image, sw, sh int) *Vec3uc {
 	D := read(u2, v2)
 
 	val := mix(mix(A, B, mu), mix(C, D, mu), nu)
-	return &Vec3uc{
+	return Vec3[uint32]{
 		X: uint32(val.X),
 		Y: uint32(val.Y),
 		Z: uint32(val.Z),
@@ -126,12 +125,12 @@ func safeIndex(n, size float64) int {
 	return int(math.Min(math.Max(n, 0), size-1))
 }
 
-func mix(one, other *Vec3fa, c float64) *Vec3fa {
+func mix(one, other Vec3[float64], c float64) Vec3[float64] {
 	x := (other.X-one.X)*c + one.X
 	y := (other.Y-one.Y)*c + one.Y
 	z := (other.Z-one.Z)*c + one.Z
 
-	return &Vec3fa{
+	return Vec3[float64]{
 		X: x,
 		Y: y,
 		Z: z,
