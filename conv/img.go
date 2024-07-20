@@ -2,6 +2,7 @@ package conv
 
 import (
 	"errors"
+	"fmt"
 	"image"
 	"image/jpeg"
 	"image/png"
@@ -31,33 +32,44 @@ var revesedFaceMap = map[string]int{
 
 func ReadImage(imagePath string) (image.Image, string, error) {
 	if _, err := os.Stat(imagePath); os.IsNotExist(err) {
-		return nil, "", err
+		return nil, "", fmt.Errorf("file does not exist: %s", imagePath)
 	}
 
-	imgFile, _ := os.Open(imagePath)
+	imgFile, err := os.Open(imagePath)
+	if err != nil {
+		return nil, "", fmt.Errorf("error opening file: %s", err)
+	}
 	defer imgFile.Close()
 
 	imgIn, ext, err := image.Decode(imgFile)
 	if err != nil {
-		return nil, "", err
+		return nil, "", fmt.Errorf("error decoding image: %s", err)
 	}
 
-	if ext == "jpeg" || ext == "png" {
+	ext = filepath.Ext(imagePath)
+	ext = ext[1:] // remove the dot from extension
+
+	if ext == "jpg" || ext == "jpeg" || ext == "png" {
 		return imgIn, ext, nil
 	}
 
-	return nil, "", errors.New("We do not support this format: " + ext)
+	return nil, "", errors.New("unsupported image format: " + ext)
 }
 
 func WriteImage(canvases []*image.RGBA, writeDirPath, imgExt string, sides []string) error {
 	if len(canvases) != len(sides) {
-		return errors.New("Mismatched face size and sides length")
+		return errors.New("mismatched face size and sides length")
 	}
 
 	if _, err := os.Stat(writeDirPath); os.IsNotExist(err) {
 		if err := os.MkdirAll(writeDirPath, os.ModePerm); err != nil {
 			return err
 		}
+	}
+
+	// Treat "jpg" as "jpeg"
+	if imgExt == "jpg" {
+		imgExt = "jpeg"
 	}
 
 	for i := 0; i < len(canvases); i++ {
@@ -75,7 +87,7 @@ func WriteImage(canvases []*image.RGBA, writeDirPath, imgExt string, sides []str
 				return err
 			}
 		default:
-			return errors.New("Unsupported image file format: " + imgExt)
+			return errors.New("unsupported image file format: " + imgExt)
 		}
 	}
 	return nil
