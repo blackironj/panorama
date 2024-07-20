@@ -20,6 +20,15 @@ var faceMap = map[int]string{
 	5: "bottom",
 }
 
+var revesedFaceMap = map[string]int{
+	"back":   0,
+	"left":   1,
+	"front":  2,
+	"right":  3,
+	"top":    4,
+	"bottom": 5,
+}
+
 func ReadImage(imagePath string) (image.Image, string, error) {
 	if _, err := os.Stat(imagePath); os.IsNotExist(err) {
 		return nil, "", err
@@ -37,12 +46,12 @@ func ReadImage(imagePath string) (image.Image, string, error) {
 		return imgIn, ext, nil
 	}
 
-	return nil, "", errors.New("We do not support this format : " + ext)
+	return nil, "", errors.New("We do not support this format: " + ext)
 }
 
-func WriteImage(canvases []*image.RGBA, writeDirPath, imgExt string) error {
-	if len(canvases) != faceLen {
-		return errors.New("Wrong face size")
+func WriteImage(canvases []*image.RGBA, writeDirPath, imgExt string, sides []string) error {
+	if len(canvases) != len(sides) {
+		return errors.New("Mismatched face size and sides length")
 	}
 
 	if _, err := os.Stat(writeDirPath); os.IsNotExist(err) {
@@ -51,8 +60,9 @@ func WriteImage(canvases []*image.RGBA, writeDirPath, imgExt string) error {
 		}
 	}
 
-	for i := 0; i < faceLen; i++ {
-		path := filepath.Join(writeDirPath, faceMap[i]+"."+imgExt)
+	for i := 0; i < len(canvases); i++ {
+		side := sides[i]
+		path := filepath.Join(writeDirPath, side+"."+imgExt)
 		newFile, _ := os.Create(path)
 
 		switch imgExt {
@@ -65,7 +75,7 @@ func WriteImage(canvases []*image.RGBA, writeDirPath, imgExt string) error {
 				return err
 			}
 		default:
-			return errors.New("Wrong image file format : " + imgExt)
+			return errors.New("Unsupported image file format: " + imgExt)
 		}
 	}
 	return nil

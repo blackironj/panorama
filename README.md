@@ -21,11 +21,12 @@ Flags:
   -i, --in string    in image file path (required)
   -l, --len int      edge length of a cube face (default 1024)
   -o, --out string   out file dir path (default ".")
+  -s, --sides array  list of sides splited by "," (optional)
 ```
 
 ``` sh
 # example
-./panorama --in ./sample_image.jpg --out ./dist --len 512
+./panorama --in ./sample_image.jpg --out ./dist --len 512 --sides left,right,top,buttom,front,back
 ```
 
 ### Installation
