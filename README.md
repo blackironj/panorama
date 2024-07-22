@@ -18,14 +18,16 @@ Usage:
 
 Flags:
   -h, --help         help for panorama
-  -i, --in string    in image file path (required)
+  -i, --in string    input image file path (required if --indir is not specified)
+  -d, --indir string input directory path (required if --in is not specified)
   -l, --len int      edge length of a cube face (default 1024)
   -o, --out string   out file dir path (default ".")
+  -s, --sides array  list of sides splited by "," (optional)
 ```
 
 ``` sh
 # example
-./panorama --in ./sample_image.jpg --out ./dist --len 512
+./panorama --in ./sample_image.jpg --out ./dist --len 512 --sides left,right,top,buttom,front,back
 ```
 
 ### Installation

@@ -4,6 +4,7 @@ go 1.21
 
 require (
 	github.com/briandowns/spinner v1.23.0
+	github.com/gosuri/uilive v0.0.4
 	github.com/spf13/cobra v1.8.0
 )
 

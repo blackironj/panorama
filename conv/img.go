@@ -2,6 +2,7 @@ package conv
 
 import (
 	"errors"
+	"fmt"
 	"image"
 	"image/jpeg"
 	"image/png"
@@ -20,29 +21,44 @@ var faceMap = map[int]string{
 	5: "bottom",
 }
 
+var revesedFaceMap = map[string]int{
+	"back":   0,
+	"left":   1,
+	"front":  2,
+	"right":  3,
+	"top":    4,
+	"bottom": 5,
+}
+
 func ReadImage(imagePath string) (image.Image, string, error) {
 	if _, err := os.Stat(imagePath); os.IsNotExist(err) {
-		return nil, "", err
+		return nil, "", fmt.Errorf("file does not exist: %s", imagePath)
 	}
 
-	imgFile, _ := os.Open(imagePath)
+	imgFile, err := os.Open(imagePath)
+	if err != nil {
+		return nil, "", fmt.Errorf("error opening file: %s", err)
+	}
 	defer imgFile.Close()
 
 	imgIn, ext, err := image.Decode(imgFile)
 	if err != nil {
-		return nil, "", err
+		return nil, "", fmt.Errorf("error decoding image: %s", err)
 	}
 
-	if ext == "jpeg" || ext == "png" {
+	ext = filepath.Ext(imagePath)
+	ext = ext[1:] // remove the dot from extension
+
+	if ext == "jpg" || ext == "jpeg" || ext == "png" {
 		return imgIn, ext, nil
 	}
 
-	return nil, "", errors.New("We do not support this format : " + ext)
+	return nil, "", errors.New("unsupported image format: " + ext)
 }
 
-func WriteImage(canvases []*image.RGBA, writeDirPath, imgExt string) error {
-	if len(canvases) != faceLen {
-		return errors.New("Wrong face size")
+func WriteImage(canvases []*image.RGBA, writeDirPath, imgExt string, sides []string) error {
+	if len(canvases) != len(sides) {
+		return errors.New("mismatched face size and sides length")
 	}
 
 	if _, err := os.Stat(writeDirPath); os.IsNotExist(err) {
@@ -51,8 +67,14 @@ func WriteImage(canvases []*image.RGBA, writeDirPath, imgExt string) error {
 		}
 	}
 
-	for i := 0; i < faceLen; i++ {
-		path := filepath.Join(writeDirPath, faceMap[i]+"."+imgExt)
+	// Treat "jpg" as "jpeg"
+	if imgExt == "jpg" {
+		imgExt = "jpeg"
+	}
+
+	for i := 0; i < len(canvases); i++ {
+		side := sides[i]
+		path := filepath.Join(writeDirPath, side+"."+imgExt)
 		newFile, _ := os.Create(path)
 
 		switch imgExt {
@@ -65,7 +87,7 @@ func WriteImage(canvases []*image.RGBA, writeDirPath, imgExt string) error {
 				return err
 			}
 		default:
-			return errors.New("Wrong image file format : " + imgExt)
+			return errors.New("unsupported image file format: " + imgExt)
 		}
 	}
 	return nil

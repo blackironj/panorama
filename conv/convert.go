@@ -13,6 +13,7 @@ const Pi_2 = math.Pi / 2.0
 type Number interface {
 	uint32 | float64
 }
+
 type Vec3[T Number] struct {
 	X, Y, Z T
 }
@@ -82,41 +83,46 @@ func interpolateXYZtoColor(xyz Vec3[float64], imgIn image.Image, sw, sh int) Vec
 	}
 }
 
-func ConvertEquirectangularToCubeMap(rValue int, imgIn image.Image) []*image.RGBA {
+func ConvertEquirectangularToCubeMap(rValue int, imgIn image.Image, sides []string) []*image.RGBA {
 	sw := imgIn.Bounds().Max.X
 	sh := imgIn.Bounds().Max.Y
+	sidesCount := len(sides)
+	var sidesInt []int
 
+	for i := 0; i < sidesCount; i++ {
+		sidesInt = append(sidesInt, revesedFaceMap[sides[i]])
+	}
 	var wg sync.WaitGroup
 
-	canvases := make([]*image.RGBA, 6)
-	for i := 0; i < 6; i++ {
-		wg.Add(1)
+	canvases := make([]*image.RGBA, sidesCount)
+	for i := 0; i < sidesCount; i++ {
 		canvases[i] = image.NewRGBA(image.Rect(0, 0, rValue, rValue))
-		start := i * rValue
-		end := start + rValue
+	}
 
-		go func() {
+	for i := 0; i < sidesCount; i++ {
+		wg.Add(1)
+		side := sidesInt[i]
+		canvas := canvases[i]
+
+		go func(side int, canvas *image.RGBA) {
 			defer wg.Done()
-			convert(start, end, rValue, sw, sh, imgIn, canvases)
-		}()
+			convert(rValue, side, sw, sh, imgIn, canvas)
+		}(side, canvas)
 	}
 	wg.Wait()
 
 	return canvases
 }
 
-func convert(start, end, edge, sw, sh int, imgIn image.Image, imgOut []*image.RGBA) {
+func convert(edge, face, sw, sh int, imgIn image.Image, imgOut *image.RGBA) {
 	inLen := 2.0 / float64(edge)
 
-	for k := start; k < end; k++ {
-		face := k / edge
-		i := k % edge
-
+	for i := 0; i < edge; i++ {
 		for j := 0; j < edge; j++ {
 			xyz := outImgToXYZ(i, j, face, edge, inLen)
 			clr := interpolateXYZtoColor(xyz, imgIn, sw, sh)
 
-			imgOut[face].Set(i, j, color.RGBA{uint8(clr.X), uint8(clr.Y), uint8(clr.Z), 255})
+			imgOut.Set(i, j, color.RGBA{uint8(clr.X), uint8(clr.Y), uint8(clr.Z), 255})
 		}
 	}
 }
