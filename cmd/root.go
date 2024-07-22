@@ -45,15 +45,16 @@ var (
 			if inFilePath == "" && inDirPath == "" {
 				er("Need an input image file path or input directory")
 			}
+			if len(inFilePath) > 0 && len(inDirPath) > 0 {
+			er("Need only one path, not both")
+			}
 
 			progress.startTime = time.Now()
 
 			if inFilePath != "" {
 				progress.totalFiles = 1
 				processSingleImage(inFilePath, outFileDir)
-			}
-
-			if inDirPath != "" {
+			} else {
 				processDirectory(inDirPath, outFileDir)
 			}
 		},
