@@ -1,0 +1,57 @@
+name: Release Pipeline
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  build-publish:
+    name: Build binary
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - build-goos: linux
+            build-arch: amd64
+            ext: ''
+          - build-goos: windows
+            build-arch: amd64
+            ext: '.exe'
+          - build-goos: darwin
+            build-arch: amd64
+            ext: ''
+          - build-goos: darwin
+            build-arch: arm64
+            ext: ''
+
+    steps:
+      - name: Setup go
+        uses: actions/setup-go@v3
+        with:
+          go-version: 1.21.x
+
+      - uses: actions/checkout@v3
+      - uses: actions/cache@v3
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: ${{ matrix.build-goos }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ matrix.build-goos }}-go-
+
+      - name: Set release output name
+        id: set-tag
+        run: |
+          echo "OUTPUT_NAME=panorama-${{ github.ref_name }}-${{ matrix.build-goos }}-${{ matrix.build-arch }}${{ matrix.ext }}" >> $GITHUB_OUTPUT
+
+      - name: Build
+        run: |
+          CGO_ENABLED=0 GOOS=${{ matrix.build-goos }} GOARCH=${{ matrix.build-arch }} go build -o "${{ steps.set-tag.outputs.OUTPUT_NAME }}" .
+
+      - name: Publish binary
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GH_TOKEN }}
+          file: "${{ steps.set-tag.outputs.OUTPUT_NAME }}"
+          tag: ${{ github.ref }}
