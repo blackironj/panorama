@@ -46,9 +46,6 @@ func ReadImage(imagePath string) (image.Image, string, error) {
 		return nil, "", fmt.Errorf("error decoding image: %s", err)
 	}
 
-	ext = filepath.Ext(imagePath)
-	ext = ext[1:] // remove the dot from extension
-
 	if ext == "jpg" || ext == "jpeg" || ext == "png" {
 		return imgIn, ext, nil
 	}
