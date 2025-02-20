@@ -53,7 +53,7 @@ var (
 
 			if inFilePath != "" {
 				progress.totalFiles = 1
-				processSingleImage(inFilePath, outFileDir)
+				processSingleImage(inFilePath, outFileDir, false)
 			} else {
 				processDirectory(inDirPath, outFileDir)
 			}
@@ -69,7 +69,7 @@ func init() {
 	rootCmd.Flags().StringSliceVarP(&sides, "sides", "s", []string{}, "array of sides [front,back,left,right,top,bottom] (default: all sides)")
 }
 
-func processSingleImage(inPath, outDir string) {
+func processSingleImage(inPath, outDir string, needSubdir bool) {
 	semaphore <- struct{}{} // Acquire a semaphore
 	defer func() { <-semaphore }() // Release the semaphore when done
 
@@ -112,8 +112,10 @@ func processSingleImage(inPath, outDir string) {
 		return
 	}
 
-	outSubDir := filepath.Join(outDir, strings.TrimSuffix(filepath.Base(inPath), filepath.Ext(inPath)))
-	if err := conv.WriteImage(canvases, outSubDir, ext, sides); err != nil {
+	if needSubdir {
+		outDir = filepath.Join(outDir, strings.TrimSuffix(filepath.Base(inPath), filepath.Ext(inPath)))
+	}
+	if err := conv.WriteImage(canvases, outDir, ext, sides); err != nil {
 		progress.Lock()
 		progress.errors = append(progress.errors, fmt.Sprintf("Error writing images for %s: %v", inPath, err))
 		progress.Unlock()
@@ -144,7 +146,7 @@ func processDirectory(inDir, outDir string) {
 			go func(file fs.DirEntry) {
 				defer wg.Done()
 				inPath := filepath.Join(inDir, file.Name())
-				processSingleImage(inPath, outDir)
+				processSingleImage(inPath, outDir, true)
 				updateProgress(writer)
 			}(file)
 		}
