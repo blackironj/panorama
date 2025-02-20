@@ -10,7 +10,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/briandowns/spinner"
 	"github.com/gosuri/uilive"
 	"github.com/spf13/cobra"
 
@@ -18,8 +17,8 @@ import (
 )
 
 const (
-	defaultEdgeLen      = 1024
-	maxConcurrentFiles  = 10 // Adjust this number based on your system's file descriptor limit
+	defaultEdgeLen     = 1024
+	maxConcurrentFiles = 10 // Adjust this number based on your system's file descriptor limit
 )
 
 var (
@@ -33,10 +32,10 @@ var (
 	semaphore  = make(chan struct{}, maxConcurrentFiles)
 	progress   = struct {
 		sync.Mutex
-		totalFiles      int
-		processedFiles  int
-		startTime       time.Time
-		errors          []string
+		totalFiles     int
+		processedFiles int
+		startTime      time.Time
+		errors         []string
 	}{}
 	rootCmd = &cobra.Command{
 		Use:   "panorama",
@@ -46,16 +45,25 @@ var (
 				er("Need an input image file path or input directory")
 			}
 			if len(inFilePath) > 0 && len(inDirPath) > 0 {
-			er("Need only one path, not both")
+				er("Need only one path, not both")
 			}
 
 			progress.startTime = time.Now()
-
+			fmt.Println("Start conversion.")
 			if inFilePath != "" {
 				progress.totalFiles = 1
-				processSingleImage(inFilePath, outFileDir)
+				processSingleImage(inFilePath, outFileDir, false)
 			} else {
 				processDirectory(inDirPath, outFileDir)
+			}
+			elapsed := time.Since(progress.startTime).Seconds()
+			fmt.Printf("Processing complete. elapsed: %.2f sec\n\n", elapsed)
+
+			if len(progress.errors) > 0 {
+				fmt.Println("\nErrors:")
+				for _, err := range progress.errors {
+					fmt.Println(err)
+				}
 			}
 		},
 	}
@@ -69,8 +77,8 @@ func init() {
 	rootCmd.Flags().StringSliceVarP(&sides, "sides", "s", []string{}, "array of sides [front,back,left,right,top,bottom] (default: all sides)")
 }
 
-func processSingleImage(inPath, outDir string) {
-	semaphore <- struct{}{} // Acquire a semaphore
+func processSingleImage(inPath, outDir string, needSubdir bool) {
+	semaphore <- struct{}{}        // Acquire a semaphore
 	defer func() { <-semaphore }() // Release the semaphore when done
 
 	inImage, ext, err := conv.ReadImage(inPath)
@@ -91,19 +99,7 @@ func processSingleImage(inPath, outDir string) {
 		}
 	}
 
-	var s *spinner.Spinner
-	if inFilePath != "" {
-		s = spinner.New(spinner.CharSets[33], 100*time.Millisecond)
-		s.FinalMSG = "Complete converting!\n"
-		s.Prefix = "Converting..."
-		s.Start()
-	}
-
 	canvases, err := safeConvertEquirectangularToCubeMap(edgeLen, inImage, sides)
-
-	if inFilePath != "" {
-		s.Stop()
-	}
 
 	if err != nil {
 		progress.Lock()
@@ -112,8 +108,10 @@ func processSingleImage(inPath, outDir string) {
 		return
 	}
 
-	outSubDir := filepath.Join(outDir, strings.TrimSuffix(filepath.Base(inPath), filepath.Ext(inPath)))
-	if err := conv.WriteImage(canvases, outSubDir, ext, sides); err != nil {
+	if needSubdir {
+		outDir = filepath.Join(outDir, strings.TrimSuffix(filepath.Base(inPath), filepath.Ext(inPath)))
+	}
+	if err := conv.WriteImage(canvases, outDir, ext, sides); err != nil {
 		progress.Lock()
 		progress.errors = append(progress.errors, fmt.Sprintf("Error writing images for %s: %v", inPath, err))
 		progress.Unlock()
@@ -144,7 +142,7 @@ func processDirectory(inDir, outDir string) {
 			go func(file fs.DirEntry) {
 				defer wg.Done()
 				inPath := filepath.Join(inDir, file.Name())
-				processSingleImage(inPath, outDir)
+				processSingleImage(inPath, outDir, true)
 				updateProgress(writer)
 			}(file)
 		}
@@ -165,14 +163,6 @@ func processDirectory(inDir, outDir string) {
 	}()
 
 	wg.Wait()
-	updateProgress(writer)
-	if len(progress.errors) > 0 {
-		fmt.Println("\nErrors:")
-		for _, err := range progress.errors {
-			fmt.Println(err)
-		}
-	}
-	fmt.Println("\nProcessing complete.")
 }
 
 func updateProgress(writer *uilive.Writer) {
