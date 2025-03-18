@@ -19,6 +19,7 @@ import (
 const (
 	defaultEdgeLen     = 1024
 	maxConcurrentFiles = 10 // Adjust this number based on your system's file descriptor limit
+	defaultJpegQuality = 75
 )
 
 var (
@@ -27,6 +28,7 @@ var (
 	inDirPath  string
 	edgeLen    int
 	sides      []string
+	quality    int
 
 	validSides = []string{"front", "back", "left", "right", "top", "bottom"}
 	semaphore  = make(chan struct{}, maxConcurrentFiles)
@@ -75,6 +77,7 @@ func init() {
 	rootCmd.Flags().StringVarP(&outFileDir, "out", "o", ".", "output file directory path")
 	rootCmd.Flags().IntVarP(&edgeLen, "len", "l", defaultEdgeLen, "edge length of a cube face")
 	rootCmd.Flags().StringSliceVarP(&sides, "sides", "s", []string{}, "array of sides [front,back,left,right,top,bottom] (default: all sides)")
+	rootCmd.Flags().IntVarP(&quality, "quality", "q", defaultJpegQuality, "jpeg file output quality ranges from 1 to 100 inclusive, higher is better")
 }
 
 func processSingleImage(inPath, outDir string, needSubdir bool) {
@@ -111,7 +114,7 @@ func processSingleImage(inPath, outDir string, needSubdir bool) {
 	if needSubdir {
 		outDir = filepath.Join(outDir, strings.TrimSuffix(filepath.Base(inPath), filepath.Ext(inPath)))
 	}
-	if err := conv.WriteImage(canvases, outDir, ext, sides); err != nil {
+	if err := conv.WriteImage(canvases, outDir, ext, sides, quality); err != nil {
 		progress.Lock()
 		progress.errors = append(progress.errors, fmt.Sprintf("Error writing images for %s: %v", inPath, err))
 		progress.Unlock()
