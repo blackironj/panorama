@@ -53,7 +53,7 @@ func ReadImage(imagePath string) (image.Image, string, error) {
 	return nil, "", errors.New("unsupported image format: " + ext)
 }
 
-func WriteImage(canvases []*image.RGBA, writeDirPath, imgExt string, sides []string) error {
+func WriteImage(canvases []*image.RGBA, writeDirPath, imgExt string, sides []string, quality int) error {
 	if len(canvases) != len(sides) {
 		return errors.New("mismatched face size and sides length")
 	}
@@ -76,7 +76,8 @@ func WriteImage(canvases []*image.RGBA, writeDirPath, imgExt string, sides []str
 
 		switch imgExt {
 		case "jpeg":
-			if err := jpeg.Encode(newFile, canvases[i], nil); err != nil {
+			opt := jpeg.Options{Quality: quality}
+			if err := jpeg.Encode(newFile, canvases[i], &opt); err != nil {
 				return err
 			}
 		case "png":

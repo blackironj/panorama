@@ -24,11 +24,12 @@ Flags:
   -l, --len int      edge length of a cube face (default 1024)
   -o, --out string   out file dir path (default ".")
   -s, --sides array  list of sides splited by "," (optional)
+  -q, --quality int  jpeg file output quality ranges from 1 to 100 inclusive, higher is better (optional, default 75)
 ```
 
 ``` sh
 # example
-./panorama --in ./sample_image.jpg --out ./dist --len 512 --sides left,right,top,buttom,front,back
+./panorama --in ./sample_image.jpg --out ./dist --len 512 --sides left,right,top,bottom,front,back
 ```
 
 ### Installation
