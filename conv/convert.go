@@ -1,144 +1,107 @@
 package conv
 
 import (
+	"fmt"
 	"image"
-	"image/color"
-	"log"
 	"math"
 	"sync"
 )
 
-const Pi_2 = math.Pi / 2.0
+const piHalf = math.Pi / 2.0
 
-type Number interface {
-	uint32 | float64
+type vec3 struct {
+	X, Y, Z float64
 }
 
-type Vec3[T Number] struct {
-	X, Y, Z T
-}
-
-func outImgToXYZ(i, j, face, edge int, inLen float64) Vec3[float64] {
+func outImgToXYZ(i, j, face int, inLen float64) (vec3, error) {
 	a := inLen*float64(i) - 1.0
 	b := inLen*float64(j) - 1.0
 
-	var res Vec3[float64]
+	var res vec3
 	switch face {
-	case 0: //back
-		res = Vec3[float64]{-1.0, -a, -b}
-	case 1: //left
-		res = Vec3[float64]{a, -1.0, -b}
-	case 2: //front
-		res = Vec3[float64]{1.0, a, -b}
-	case 3: //right
-		res = Vec3[float64]{-a, 1.0, -b}
-	case 4: //top
-		res = Vec3[float64]{b, a, 1.0}
-	case 5: //bottom
-		res = Vec3[float64]{-b, a, -1.0}
+	case 0: // back
+		res = vec3{-1.0, -a, -b}
+	case 1: // left
+		res = vec3{a, -1.0, -b}
+	case 2: // front
+		res = vec3{1.0, a, -b}
+	case 3: // right
+		res = vec3{-a, 1.0, -b}
+	case 4: // top
+		res = vec3{b, a, 1.0}
+	case 5: // bottom
+		res = vec3{-b, a, -1.0}
 	default:
-		log.Fatal("Wrong face")
+		return vec3{}, fmt.Errorf("invalid face index: %d", face)
 	}
-	return res
+	return res, nil
 }
 
-func interpolateXYZtoColor(xyz Vec3[float64], imgIn image.Image, sw, sh int) Vec3[uint32] {
-	theta := math.Atan2(xyz.Y, xyz.X)
-	rad := math.Hypot(xyz.X, xyz.Y) // range -pi to pi
-	phi := math.Atan2(xyz.Z, rad)   // range -pi/2 to pi/2
-
-	//source img coords
-	dividedH := float64(sh) / math.Pi
-	uf := (theta + math.Pi) * dividedH
-	vf := (Pi_2 - phi) * dividedH
-
-	// Use bilinear interpolation between the four surrounding pixels
-	ui := safeIndex(math.Floor(uf), float64(sw))
-	vi := safeIndex(math.Floor(vf), float64(sh))
-	u2 := safeIndex(float64(ui)+1.0, float64(sw))
-	v2 := safeIndex(float64(vi)+1.0, float64(sh))
-
-	mu := uf - float64(ui)
-	nu := vf - float64(vi)
-
-	read := func(x, y int) Vec3[float64] {
-		red, green, blue, _ := imgIn.At(x, y).RGBA()
-		return Vec3[float64]{
-			X: float64(red >> 8),
-			Y: float64(green >> 8),
-			Z: float64(blue >> 8),
-		}
-	}
-
-	A := read(ui, vi)
-	B := read(u2, vi)
-	C := read(ui, v2)
-	D := read(u2, v2)
-
-	val := mix(mix(A, B, mu), mix(C, D, mu), nu)
-	return Vec3[uint32]{
-		X: uint32(val.X),
-		Y: uint32(val.Y),
-		Z: uint32(val.Z),
-	}
-}
-
-func ConvertEquirectangularToCubeMap(rValue int, imgIn image.Image, sides []string) []*image.RGBA {
+func ConvertEquirectangularToCubeMap(edgeLen int, imgIn *image.RGBA, sides []string, interp Interpolator) ([]*image.RGBA, error) {
 	sw := imgIn.Bounds().Max.X
 	sh := imgIn.Bounds().Max.Y
 	sidesCount := len(sides)
-	var sidesInt []int
 
-	for i := 0; i < sidesCount; i++ {
-		sidesInt = append(sidesInt, revesedFaceMap[sides[i]])
+	sidesInt := make([]int, 0, sidesCount)
+	for i := range sidesCount {
+		sidesInt = append(sidesInt, reversedFaceMap[sides[i]])
 	}
+
 	var wg sync.WaitGroup
 
 	canvases := make([]*image.RGBA, sidesCount)
-	for i := 0; i < sidesCount; i++ {
-		canvases[i] = image.NewRGBA(image.Rect(0, 0, rValue, rValue))
+	for i := range sidesCount {
+		canvases[i] = image.NewRGBA(image.Rect(0, 0, edgeLen, edgeLen))
 	}
 
-	for i := 0; i < sidesCount; i++ {
+	errs := make([]error, sidesCount)
+	for i := range sidesCount {
 		wg.Add(1)
-		side := sidesInt[i]
-		canvas := canvases[i]
-
-		go func(side int, canvas *image.RGBA) {
+		go func(idx, side int, canvas *image.RGBA) {
 			defer wg.Done()
-			convert(rValue, side, sw, sh, imgIn, canvas)
-		}(side, canvas)
+			errs[idx] = convert(edgeLen, side, sw, sh, imgIn, canvas, interp)
+		}(i, sidesInt[i], canvases[i])
 	}
 	wg.Wait()
 
-	return canvases
-}
-
-func convert(edge, face, sw, sh int, imgIn image.Image, imgOut *image.RGBA) {
-	inLen := 2.0 / float64(edge)
-
-	for i := 0; i < edge; i++ {
-		for j := 0; j < edge; j++ {
-			xyz := outImgToXYZ(i, j, face, edge, inLen)
-			clr := interpolateXYZtoColor(xyz, imgIn, sw, sh)
-
-			imgOut.Set(i, j, color.RGBA{uint8(clr.X), uint8(clr.Y), uint8(clr.Z), 255})
+	for _, err := range errs {
+		if err != nil {
+			return nil, err
 		}
 	}
+
+	return canvases, nil
+}
+
+func convert(edge, face, sw, sh int, imgIn *image.RGBA, imgOut *image.RGBA, interp Interpolator) error {
+	inLen := 2.0 / float64(edge)
+	dividedH := float64(sh) / math.Pi
+
+	for i := range edge {
+		for j := range edge {
+			xyz, err := outImgToXYZ(i, j, face, inLen)
+			if err != nil {
+				return err
+			}
+
+			theta := math.Atan2(xyz.Y, xyz.X)
+			rad := math.Hypot(xyz.X, xyz.Y)
+			phi := math.Atan2(xyz.Z, rad)
+
+			uf := (theta + math.Pi) * dividedH
+			vf := (piHalf - phi) * dividedH
+
+			r, g, b := interp.Interpolate(imgIn, uf, vf, sw, sh)
+			off := (j*edge + i) * 4
+			imgOut.Pix[off] = r
+			imgOut.Pix[off+1] = g
+			imgOut.Pix[off+2] = b
+			imgOut.Pix[off+3] = 255
+		}
+	}
+	return nil
 }
 
 func safeIndex(n, size float64) int {
 	return int(math.Min(math.Max(n, 0), size-1))
-}
-
-func mix(one, other Vec3[float64], c float64) Vec3[float64] {
-	x := (other.X-one.X)*c + one.X
-	y := (other.Y-one.Y)*c + one.Y
-	z := (other.Z-one.Z)*c + one.Z
-
-	return Vec3[float64]{
-		X: x,
-		Y: y,
-		Z: z,
-	}
 }
