@@ -12,12 +12,17 @@ import (
 )
 
 var reversedFaceMap = map[string]int{
-	"back":   0,
-	"left":   1,
-	"front":  2,
-	"right":  3,
-	"top":    4,
-	"bottom": 5,
+	"back":   faceBack,
+	"left":   faceLeft,
+	"front":  faceFront,
+	"right":  faceRight,
+	"top":    faceTop,
+	"bottom": faceBottom,
+}
+
+// ValidSides returns all supported cubemap face names.
+func ValidSides() []string {
+	return []string{"front", "back", "left", "right", "top", "bottom"}
 }
 
 func toRGBA(img image.Image) *image.RGBA {

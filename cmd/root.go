@@ -24,7 +24,7 @@ const (
 	minEdgeLen         = 1
 )
 
-var validSides = []string{"front", "back", "left", "right", "top", "bottom"}
+var validSides = conv.ValidSides()
 
 var (
 	inFilePath    string
