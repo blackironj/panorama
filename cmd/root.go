@@ -2,9 +2,9 @@ package cmd
 
 import (
 	"fmt"
-	"image"
 	"io/fs"
 	"os"
+	"slices"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -18,163 +18,205 @@ import (
 
 const (
 	defaultEdgeLen     = 1024
-	maxConcurrentFiles = 10 // Adjust this number based on your system's file descriptor limit
+	maxConcurrentFiles = 10
 	defaultJpegQuality = 75
 )
 
+var validSides = []string{"front", "back", "left", "right", "top", "bottom"}
+
 var (
-	inFilePath string
-	outFileDir string
-	inDirPath  string
-	edgeLen    int
-	sides      []string
-	quality    int
-
-	validSides = []string{"front", "back", "left", "right", "top", "bottom"}
-	semaphore  = make(chan struct{}, maxConcurrentFiles)
-	progress   = struct {
-		sync.Mutex
-		totalFiles     int
-		processedFiles int
-		startTime      time.Time
-		errors         []string
-	}{}
-	rootCmd = &cobra.Command{
-		Use:   "panorama",
-		Short: "convert equirectangular panorama img to Cubemap img",
-		Run: func(cmd *cobra.Command, args []string) {
-			if inFilePath == "" && inDirPath == "" {
-				er("Need an input image file path or input directory")
-			}
-			if len(inFilePath) > 0 && len(inDirPath) > 0 {
-				er("Need only one path, not both")
-			}
-
-			progress.startTime = time.Now()
-			fmt.Println("Start conversion.")
-			if inFilePath != "" {
-				progress.totalFiles = 1
-				processSingleImage(inFilePath, outFileDir, false)
-			} else {
-				processDirectory(inDirPath, outFileDir)
-			}
-			elapsed := time.Since(progress.startTime).Seconds()
-			fmt.Printf("Processing complete. elapsed: %.2f sec\n\n", elapsed)
-
-			if len(progress.errors) > 0 {
-				fmt.Println("\nErrors:")
-				for _, err := range progress.errors {
-					fmt.Println(err)
-				}
-			}
-		},
-	}
+	inFilePath    string
+	outFileDir    string
+	inDirPath     string
+	edgeLen       int
+	sides         []string
+	quality       int
+	interpolation string
 )
+
+var rootCmd = &cobra.Command{
+	Use:   "panorama",
+	Short: "convert equirectangular panorama img to Cubemap img",
+	Run:   run,
+}
 
 func init() {
 	rootCmd.Flags().StringVarP(&inFilePath, "in", "i", "", "input image file path (required if --indir is not specified)")
 	rootCmd.Flags().StringVarP(&inDirPath, "indir", "d", "", "input directory path (required if --in is not specified)")
 	rootCmd.Flags().StringVarP(&outFileDir, "out", "o", ".", "output file directory path")
 	rootCmd.Flags().IntVarP(&edgeLen, "len", "l", defaultEdgeLen, "edge length of a cube face")
-	rootCmd.Flags().StringSliceVarP(&sides, "sides", "s", []string{}, "array of sides [front,back,left,right,top,bottom] (default: all sides)")
+	rootCmd.Flags().StringSliceVarP(&sides, "sides", "s", nil, "array of sides [front,back,left,right,top,bottom] (default: all sides)")
 	rootCmd.Flags().IntVarP(&quality, "quality", "q", defaultJpegQuality, "jpeg file output quality ranges from 1 to 100 inclusive, higher is better")
+	rootCmd.Flags().StringVarP(&interpolation, "interpolation", "p", "bilinear", "interpolation method: nearest, bilinear, bicubic")
 }
 
-func processSingleImage(inPath, outDir string, needSubdir bool) {
-	semaphore <- struct{}{}        // Acquire a semaphore
-	defer func() { <-semaphore }() // Release the semaphore when done
+func Execute() {
+	if err := rootCmd.Execute(); err != nil {
+		fmt.Fprintln(os.Stderr, "error:", err)
+		os.Exit(1)
+	}
+}
 
-	inImage, ext, err := conv.ReadImage(inPath)
-	if err != nil {
-		progress.Lock()
-		progress.errors = append(progress.errors, fmt.Sprintf("Error reading image %s: %v", inPath, err))
-		progress.Unlock()
-		return
+func run(_ *cobra.Command, _ []string) {
+	if inFilePath == "" && inDirPath == "" {
+		exitWithError("need an input image file path or input directory")
+	}
+	if inFilePath != "" && inDirPath != "" {
+		exitWithError("need only one path, not both")
 	}
 
-	if len(sides) == 0 {
-		sides = validSides
+	targetSides, err := resolveTargetSides(sides)
+	if err != nil {
+		exitWithError(err)
+	}
+
+	interp, err := conv.ParseInterpolation(interpolation)
+	if err != nil {
+		exitWithError(err)
+	}
+
+	startTime := time.Now()
+	fmt.Println("Start conversion.")
+
+	if inFilePath != "" {
+		if err := processSingleImage(inFilePath, outFileDir, targetSides, interp, false); err != nil {
+			exitWithError(err)
+		}
 	} else {
-		for _, side := range sides {
-			if !isValidSide(side) {
-				er(fmt.Sprintf("Invalid side specified: %s. Valid sides are %v", side, validSides))
-			}
+		processDirectory(inDirPath, outFileDir, targetSides, interp)
+	}
+
+	elapsed := time.Since(startTime).Seconds()
+	fmt.Printf("Processing complete. elapsed: %.2f sec\n", elapsed)
+}
+
+func resolveTargetSides(sides []string) ([]string, error) {
+	if len(sides) == 0 {
+		return validSides, nil
+	}
+	for _, side := range sides {
+		if !isValidSide(side) {
+			return nil, fmt.Errorf("invalid side specified: %s, valid sides are %v", side, validSides)
 		}
 	}
+	return sides, nil
+}
 
-	canvases, err := safeConvertEquirectangularToCubeMap(edgeLen, inImage, sides)
-
+func processSingleImage(inPath, outDir string, targetSides []string, interp conv.Interpolator, needSubdir bool) error {
+	inImage, ext, err := conv.ReadImage(inPath)
 	if err != nil {
-		progress.Lock()
-		progress.errors = append(progress.errors, fmt.Sprintf("Error converting image %s: %v", inPath, err))
-		progress.Unlock()
-		return
+		return fmt.Errorf("reading image %s: %w", inPath, err)
+	}
+
+	canvases, err := conv.ConvertEquirectangularToCubeMap(edgeLen, inImage, targetSides, interp)
+	if err != nil {
+		return fmt.Errorf("converting image %s: %w", inPath, err)
 	}
 
 	if needSubdir {
 		outDir = filepath.Join(outDir, strings.TrimSuffix(filepath.Base(inPath), filepath.Ext(inPath)))
 	}
-	if err := conv.WriteImage(canvases, outDir, ext, sides, quality); err != nil {
-		progress.Lock()
-		progress.errors = append(progress.errors, fmt.Sprintf("Error writing images for %s: %v", inPath, err))
-		progress.Unlock()
-		return
+
+	if err := conv.WriteImage(canvases, outDir, ext, targetSides, quality); err != nil {
+		return fmt.Errorf("writing images for %s: %w", inPath, err)
 	}
 
-	progress.Lock()
-	progress.processedFiles++
-	progress.Unlock()
+	return nil
 }
 
-func processDirectory(inDir, outDir string) {
+func processDirectory(inDir, outDir string, targetSides []string, interp conv.Interpolator) {
 	files, err := os.ReadDir(inDir)
 	if err != nil {
-		er(err)
+		exitWithError(err)
 	}
 
-	progress.totalFiles = len(files)
+	var imageFiles []fs.DirEntry
+	for _, file := range files {
+		if !file.IsDir() && isImageFile(file) {
+			imageFiles = append(imageFiles, file)
+		}
+	}
+
+	totalFiles := len(imageFiles)
+	if totalFiles == 0 {
+		fmt.Println("No image files found in directory.")
+		return
+	}
 
 	writer := uilive.New()
 	writer.Start()
 	defer writer.Stop()
 
+	var (
+		mu             sync.Mutex
+		processedFiles int
+		errors         []string
+		startTime      = time.Now()
+		semaphore      = make(chan struct{}, maxConcurrentFiles)
+	)
+
 	var wg sync.WaitGroup
-	for _, file := range files {
-		if !file.IsDir() && isImageFile(file) {
-			wg.Add(1)
-			go func(file fs.DirEntry) {
-				defer wg.Done()
-				inPath := filepath.Join(inDir, file.Name())
-				processSingleImage(inPath, outDir, true)
-				updateProgress(writer)
-			}(file)
-		}
+	for _, file := range imageFiles {
+		wg.Add(1)
+		go func(file fs.DirEntry) {
+			defer wg.Done()
+
+			semaphore <- struct{}{}
+			defer func() { <-semaphore }()
+
+			inPath := filepath.Join(inDir, file.Name())
+			if err := processSingleImage(inPath, outDir, targetSides, interp, true); err != nil {
+				mu.Lock()
+				errors = append(errors, err.Error())
+				mu.Unlock()
+				return
+			}
+
+			mu.Lock()
+			processedFiles++
+			mu.Unlock()
+		}(file)
 	}
 
+	// Progress reporting
+	done := make(chan struct{})
 	go func() {
+		defer close(done)
 		for {
 			time.Sleep(1 * time.Second)
-			updateProgress(writer)
-			progress.Lock()
-			remaining := progress.totalFiles - progress.processedFiles
-			if remaining <= 0 {
-				progress.Unlock()
-				break
+			mu.Lock()
+			processed := processedFiles
+			mu.Unlock()
+
+			printProgress(writer, processed, totalFiles, startTime)
+
+			if processed >= totalFiles {
+				return
 			}
-			progress.Unlock()
 		}
 	}()
 
 	wg.Wait()
+	<-done
+
+	if len(errors) > 0 {
+		fmt.Fprintln(os.Stderr, "\nErrors:")
+		for _, e := range errors {
+			fmt.Fprintln(os.Stderr, e)
+		}
+	}
 }
 
-func updateProgress(writer *uilive.Writer) {
-	progress.Lock()
-	defer progress.Unlock()
-	remaining := progress.totalFiles - progress.processedFiles
-	elapsed := time.Since(progress.startTime).Seconds()
-	eta := float64(remaining) / (float64(progress.processedFiles) / elapsed)
-	fmt.Fprintf(writer, "Progress: %d/%d files processed. ETA: %.2f seconds. IT/S: %.2f\n", progress.processedFiles, progress.totalFiles, eta, float64(progress.processedFiles)/elapsed)
+func printProgress(writer *uilive.Writer, processed, total int, startTime time.Time) {
+	elapsed := time.Since(startTime).Seconds()
+	if processed == 0 {
+		fmt.Fprintf(writer, "Progress: 0/%d files processed. Elapsed: %.2f seconds\n", total, elapsed)
+		return
+	}
+	remaining := total - processed
+	eta := float64(remaining) / (float64(processed) / elapsed)
+	ips := float64(processed) / elapsed
+	fmt.Fprintf(writer, "Progress: %d/%d files processed. ETA: %.2f seconds. IT/S: %.2f\n", processed, total, eta, ips)
 }
 
 func isImageFile(file fs.DirEntry) bool {
@@ -182,31 +224,11 @@ func isImageFile(file fs.DirEntry) bool {
 	return ext == ".jpg" || ext == ".jpeg" || ext == ".png"
 }
 
-func er(msg interface{}) {
-	fmt.Println("Error:", msg)
-	os.Exit(1)
-}
-
-func Execute() {
-	if err := rootCmd.Execute(); err != nil {
-		er(err)
-	}
-}
-
 func isValidSide(side string) bool {
-	for _, s := range validSides {
-		if s == side {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(validSides, side)
 }
 
-func safeConvertEquirectangularToCubeMap(edgeLen int, imgIn image.Image, sides []string) ([]*image.RGBA, error) {
-	defer func() {
-		if r := recover(); r != nil {
-			fmt.Printf("Recovered in safeConvertEquirectangularToCubeMap: %v\n", r)
-		}
-	}()
-	return conv.ConvertEquirectangularToCubeMap(edgeLen, imgIn, sides), nil
+func exitWithError(msg any) {
+	fmt.Fprintln(os.Stderr, "error:", msg)
+	os.Exit(1)
 }
