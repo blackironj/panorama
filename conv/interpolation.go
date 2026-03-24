@@ -6,10 +6,12 @@ import (
 	"math"
 )
 
+// Interpolator samples a color from an RGBA image at fractional coordinates.
 type Interpolator interface {
 	Interpolate(img *image.RGBA, uf, vf float64, sw, sh int) (r, g, b uint8)
 }
 
+// ParseInterpolation returns an Interpolator for the given name.
 func ParseInterpolation(name string) (Interpolator, error) {
 	switch name {
 	case "nearest":
@@ -28,22 +30,24 @@ func readPixel(img *image.RGBA, x, y int) (r, g, b float64) {
 	return float64(img.Pix[off]), float64(img.Pix[off+1]), float64(img.Pix[off+2])
 }
 
+// NearestInterpolator samples the single closest pixel.
 type NearestInterpolator struct{}
 
 func (NearestInterpolator) Interpolate(img *image.RGBA, uf, vf float64, sw, sh int) (r, g, b uint8) {
-	x := safeIndex(math.Round(uf), float64(sw))
-	y := safeIndex(math.Round(vf), float64(sh))
+	x := safeIndex(int(math.Round(uf)), sw)
+	y := safeIndex(int(math.Round(vf)), sh)
 	pr, pg, pb := readPixel(img, x, y)
 	return uint8(pr), uint8(pg), uint8(pb)
 }
 
+// BilinearInterpolator uses weighted average of 4 surrounding pixels.
 type BilinearInterpolator struct{}
 
 func (BilinearInterpolator) Interpolate(img *image.RGBA, uf, vf float64, sw, sh int) (r, g, b uint8) {
-	ui := safeIndex(math.Floor(uf), float64(sw))
-	vi := safeIndex(math.Floor(vf), float64(sh))
-	u2 := safeIndex(float64(ui)+1.0, float64(sw))
-	v2 := safeIndex(float64(vi)+1.0, float64(sh))
+	ui := safeIndex(int(math.Floor(uf)), sw)
+	vi := safeIndex(int(math.Floor(vf)), sh)
+	u2 := safeIndex(ui+1, sw)
+	v2 := safeIndex(vi+1, sh)
 
 	mu := uf - float64(ui)
 	nu := vf - float64(vi)
@@ -60,6 +64,7 @@ func (BilinearInterpolator) Interpolate(img *image.RGBA, uf, vf float64, sw, sh 
 	return uint8(clamp(fr)), uint8(clamp(fg)), uint8(clamp(fb))
 }
 
+// BicubicInterpolator uses weighted average of 16 surrounding pixels with cubic kernel.
 type BicubicInterpolator struct{}
 
 func (BicubicInterpolator) Interpolate(img *image.RGBA, uf, vf float64, sw, sh int) (r, g, b uint8) {
@@ -73,8 +78,8 @@ func (BicubicInterpolator) Interpolate(img *image.RGBA, uf, vf float64, sw, sh i
 		wv := cubicWeight(dv - float64(m))
 		for n := -1; n <= 2; n++ {
 			wu := cubicWeight(du - float64(n))
-			px := safeIndex(float64(ui+n), float64(sw))
-			py := safeIndex(float64(vi+m), float64(sh))
+			px := safeIndex(ui+n, sw)
+			py := safeIndex(vi+m, sh)
 			pr, pg, pb := readPixel(img, px, py)
 			w := wu * wv
 			sr += pr * w
@@ -102,5 +107,11 @@ func lerp(a, b, t float64) float64 {
 }
 
 func clamp(v float64) float64 {
-	return math.Max(0, math.Min(255, v))
+	if v < 0 {
+		return 0
+	}
+	if v > 255 {
+		return 255
+	}
+	return v
 }

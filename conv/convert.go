@@ -1,7 +1,6 @@
 package conv
 
 import (
-	"fmt"
 	"image"
 	"math"
 	"sync"
@@ -9,32 +8,38 @@ import (
 
 const piHalf = math.Pi / 2.0
 
+const (
+	faceBack   = 0
+	faceLeft   = 1
+	faceFront  = 2
+	faceRight  = 3
+	faceTop    = 4
+	faceBottom = 5
+	faceCount  = 6
+)
+
 type vec3 struct {
 	X, Y, Z float64
 }
 
-func outImgToXYZ(i, j, face int, inLen float64) (vec3, error) {
+func outImgToXYZ(i, j, face int, inLen float64) vec3 {
 	a := inLen*float64(i) - 1.0
 	b := inLen*float64(j) - 1.0
 
-	var res vec3
 	switch face {
-	case 0: // back
-		res = vec3{-1.0, -a, -b}
-	case 1: // left
-		res = vec3{a, -1.0, -b}
-	case 2: // front
-		res = vec3{1.0, a, -b}
-	case 3: // right
-		res = vec3{-a, 1.0, -b}
-	case 4: // top
-		res = vec3{b, a, 1.0}
-	case 5: // bottom
-		res = vec3{-b, a, -1.0}
-	default:
-		return vec3{}, fmt.Errorf("invalid face index: %d", face)
+	case faceBack:
+		return vec3{-1.0, -a, -b}
+	case faceLeft:
+		return vec3{a, -1.0, -b}
+	case faceFront:
+		return vec3{1.0, a, -b}
+	case faceRight:
+		return vec3{-a, 1.0, -b}
+	case faceTop:
+		return vec3{b, a, 1.0}
+	default: // faceBottom
+		return vec3{-b, a, -1.0}
 	}
-	return res, nil
 }
 
 func ConvertEquirectangularToCubeMap(edgeLen int, imgIn *image.RGBA, sides []string, interp Interpolator) ([]*image.RGBA, error) {
@@ -42,9 +47,9 @@ func ConvertEquirectangularToCubeMap(edgeLen int, imgIn *image.RGBA, sides []str
 	sh := imgIn.Bounds().Max.Y
 	sidesCount := len(sides)
 
-	sidesInt := make([]int, 0, sidesCount)
+	sidesInt := make([]int, sidesCount)
 	for i := range sidesCount {
-		sidesInt = append(sidesInt, reversedFaceMap[sides[i]])
+		sidesInt[i] = reversedFaceMap[sides[i]]
 	}
 
 	var wg sync.WaitGroup
@@ -54,35 +59,25 @@ func ConvertEquirectangularToCubeMap(edgeLen int, imgIn *image.RGBA, sides []str
 		canvases[i] = image.NewRGBA(image.Rect(0, 0, edgeLen, edgeLen))
 	}
 
-	errs := make([]error, sidesCount)
 	for i := range sidesCount {
 		wg.Add(1)
 		go func(idx, side int, canvas *image.RGBA) {
 			defer wg.Done()
-			errs[idx] = convert(edgeLen, side, sw, sh, imgIn, canvas, interp)
+			convert(edgeLen, side, sw, sh, imgIn, canvas, interp)
 		}(i, sidesInt[i], canvases[i])
 	}
 	wg.Wait()
 
-	for _, err := range errs {
-		if err != nil {
-			return nil, err
-		}
-	}
-
 	return canvases, nil
 }
 
-func convert(edge, face, sw, sh int, imgIn *image.RGBA, imgOut *image.RGBA, interp Interpolator) error {
+func convert(edge, face, sw, sh int, imgIn *image.RGBA, imgOut *image.RGBA, interp Interpolator) {
 	inLen := 2.0 / float64(edge)
 	dividedH := float64(sh) / math.Pi
 
 	for i := range edge {
 		for j := range edge {
-			xyz, err := outImgToXYZ(i, j, face, inLen)
-			if err != nil {
-				return err
-			}
+			xyz := outImgToXYZ(i, j, face, inLen)
 
 			theta := math.Atan2(xyz.Y, xyz.X)
 			rad := math.Hypot(xyz.X, xyz.Y)
@@ -99,9 +94,14 @@ func convert(edge, face, sw, sh int, imgIn *image.RGBA, imgOut *image.RGBA, inte
 			imgOut.Pix[off+3] = 255
 		}
 	}
-	return nil
 }
 
-func safeIndex(n, size float64) int {
-	return int(math.Min(math.Max(n, 0), size-1))
+func safeIndex(n, size int) int {
+	if n < 0 {
+		return 0
+	}
+	if n >= size {
+		return size - 1
+	}
+	return n
 }

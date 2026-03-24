@@ -25,20 +25,12 @@ jobs:
             ext: ''
 
     steps:
+      - uses: actions/checkout@v4
+
       - name: Setup go
         uses: actions/setup-go@v5
         with:
-          go-version: 1.21.x
-
-      - uses: actions/checkout@v4
-      - uses: actions/cache@v4
-        with:
-          path: |
-            ~/go/pkg/mod
-            ~/.cache/go-build
-          key: ${{ matrix.build-goos }}-go-${{ hashFiles('**/go.sum') }}
-          restore-keys: |
-            ${{ matrix.build-goos }}-go-
+          go-version: 1.25.x
 
       - name: Set release output name
         id: set-tag

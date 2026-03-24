@@ -4,13 +4,13 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
-	"slices"
 	"path/filepath"
+	"runtime"
+	"slices"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/gosuri/uilive"
 	"github.com/spf13/cobra"
 
 	"github.com/blackironj/panorama/conv"
@@ -18,8 +18,10 @@ import (
 
 const (
 	defaultEdgeLen     = 1024
-	maxConcurrentFiles = 10
 	defaultJpegQuality = 75
+	minJpegQuality     = 1
+	maxJpegQuality     = 100
+	minEdgeLen         = 1
 )
 
 var validSides = []string{"front", "back", "left", "right", "top", "bottom"}
@@ -63,6 +65,13 @@ func run(_ *cobra.Command, _ []string) {
 	}
 	if inFilePath != "" && inDirPath != "" {
 		exitWithError("need only one path, not both")
+	}
+
+	if edgeLen < minEdgeLen {
+		exitWithError(fmt.Sprintf("edge length must be at least %d", minEdgeLen))
+	}
+	if quality < minJpegQuality || quality > maxJpegQuality {
+		exitWithError(fmt.Sprintf("quality must be between %d and %d", minJpegQuality, maxJpegQuality))
 	}
 
 	targetSides, err := resolveTargetSides(sides)
@@ -143,16 +152,14 @@ func processDirectory(inDir, outDir string, targetSides []string, interp conv.In
 		return
 	}
 
-	writer := uilive.New()
-	writer.Start()
-	defer writer.Stop()
+	maxConcurrent := min(runtime.NumCPU(), totalFiles)
 
 	var (
 		mu             sync.Mutex
 		processedFiles int
 		errors         []string
 		startTime      = time.Now()
-		semaphore      = make(chan struct{}, maxConcurrentFiles)
+		semaphore      = make(chan struct{}, maxConcurrent)
 	)
 
 	var wg sync.WaitGroup
@@ -168,6 +175,7 @@ func processDirectory(inDir, outDir string, targetSides []string, interp conv.In
 			if err := processSingleImage(inPath, outDir, targetSides, interp, true); err != nil {
 				mu.Lock()
 				errors = append(errors, err.Error())
+				processedFiles++
 				mu.Unlock()
 				return
 			}
@@ -188,7 +196,7 @@ func processDirectory(inDir, outDir string, targetSides []string, interp conv.In
 			processed := processedFiles
 			mu.Unlock()
 
-			printProgress(writer, processed, totalFiles, startTime)
+			printProgress(processed, totalFiles, startTime)
 
 			if processed >= totalFiles {
 				return
@@ -207,16 +215,19 @@ func processDirectory(inDir, outDir string, targetSides []string, interp conv.In
 	}
 }
 
-func printProgress(writer *uilive.Writer, processed, total int, startTime time.Time) {
+func printProgress(processed, total int, startTime time.Time) {
 	elapsed := time.Since(startTime).Seconds()
 	if processed == 0 {
-		fmt.Fprintf(writer, "Progress: 0/%d files processed. Elapsed: %.2f seconds\n", total, elapsed)
+		fmt.Fprintf(os.Stderr, "\rProgress: 0/%d files processed. Elapsed: %.2f seconds", total, elapsed)
 		return
 	}
 	remaining := total - processed
 	eta := float64(remaining) / (float64(processed) / elapsed)
 	ips := float64(processed) / elapsed
-	fmt.Fprintf(writer, "Progress: %d/%d files processed. ETA: %.2f seconds. IT/S: %.2f\n", processed, total, eta, ips)
+	fmt.Fprintf(os.Stderr, "\rProgress: %d/%d files processed. ETA: %.2f seconds. IT/S: %.2f", processed, total, eta, ips)
+	if processed >= total {
+		fmt.Fprintln(os.Stderr)
+	}
 }
 
 func isImageFile(file fs.DirEntry) bool {
