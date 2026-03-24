@@ -1,51 +1,80 @@
-# Equirectangular panorama to Cubemap
+# Equirectangular Panorama to Cubemap
 
-Porting c++ to go from <https://github.com/denivip/panorama>
+[![CI](https://github.com/blackironj/panorama/actions/workflows/ci.yml/badge.svg)](https://github.com/blackironj/panorama/actions/workflows/ci.yml)
 
-Convert an equirectangular panorama image into cubemap image. this simple app is written by Go
+Convert equirectangular panorama images into cubemap images. Written in Go.
+
+Inspired by [denivip/panorama](https://github.com/denivip/panorama).
 
 ## Screenshot
 
 ![example](https://user-images.githubusercontent.com/43738420/112742708-bf90c100-8fcb-11eb-8159-cecaf834ef2c.png)
-> Image source: <a href="https://unsplash.com/@oldfieldart?utm_content=creditCopyText&utm_medium=referral&utm_source=unsplash">Timothy Oldfield</a> on <a href="https://unsplash.com/photos/blue-and-gray-docks-luufnHoChRU?utm_content=creditCopyText&utm_medium=referral&utm_source=unsplash">Unsplash</a>
+> Image source: [Timothy Oldfield](https://unsplash.com/@oldfieldart) on [Unsplash](https://unsplash.com/photos/blue-and-gray-docks-luufnHoChRU)
 
-### Usage
+## Features
 
-It is possible to convert **JPEG** and **PNG** image format
+- Supports **JPEG** and **PNG** input/output
+- Three interpolation algorithms: **nearest**, **bilinear** (default), **bicubic**
+- Selective face extraction (front, back, left, right, top, bottom)
+- Batch directory processing with concurrent execution
+- Configurable output quality and cube face size
 
-``` sh
-Usage:
-  panorama [flags]
+## Usage
+
+```sh
+panorama [flags]
 
 Flags:
-  -h, --help         help for panorama
-  -i, --in string    input image file path (required if --indir is not specified)
-  -d, --indir string input directory path (required if --in is not specified)
-  -l, --len int      edge length of a cube face (default 1024)
-  -o, --out string   out file dir path (default ".")
-  -s, --sides array  list of sides splited by "," (optional)
-  -q, --quality int  jpeg file output quality ranges from 1 to 100 inclusive, higher is better (optional, default 75)
+  -i, --in string              input image file path (required if --indir is not specified)
+  -d, --indir string           input directory path (required if --in is not specified)
+  -o, --out string             output file directory path (default ".")
+  -l, --len int                edge length of a cube face (default 1024)
+  -s, --sides strings          list of sides: front,back,left,right,top,bottom (default: all)
+  -q, --quality int            jpeg output quality, 1-100 (default 75)
+  -p, --interpolation string   interpolation method: nearest, bilinear, bicubic (default "bilinear")
+  -h, --help                   help for panorama
 ```
 
-``` sh
-# example
-./panorama --in ./sample_image.jpg --out ./dist --len 512 --sides left,right,top,bottom,front,back
+### Examples
+
+```sh
+# Basic conversion
+./panorama -i ./sample.jpg -o ./dist
+
+# High quality bicubic with 2048px faces
+./panorama -i ./sample.jpg -o ./dist -l 2048 -p bicubic -q 95
+
+# Only front and back faces
+./panorama -i ./sample.jpg -o ./dist -s front,back
+
+# Batch process a directory
+./panorama -d ./input_dir -o ./dist
 ```
 
-### Installation
+## Installation
 
-``` sh
-git clone https://github.com/blackironj/panorama.gitgit clone
+### Build from source
 
+```sh
+git clone https://github.com/blackironj/panorama.git
 cd panorama
-
 go build -o panorama
 ```
 
-Or [Download here](https://github.com/blackironj/panorama/releases/tag/1.0)
+### Download
 
-### TODO
+Pre-built binaries are available on the [Releases](https://github.com/blackironj/panorama/releases) page.
 
-- Optimize code
-  - It uses 1 go-routine per each face to convert. (use 6 go-routines)
-- Add more interpolation algorithms
+Supported platforms: Linux (amd64/arm64), macOS (amd64/arm64), Windows (amd64).
+
+## Interpolation Methods
+
+| Method | Speed | Quality | Description |
+|--------|-------|---------|-------------|
+| `nearest` | Fastest | Low | Nearest pixel sampling, good for previews |
+| `bilinear` | Balanced | Medium | 4-pixel weighted average (default) |
+| `bicubic` | Slowest | High | 16-pixel Catmull-Rom kernel, sharpest output |
+
+## License
+
+[MIT](LICENSE)
